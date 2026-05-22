@@ -105,7 +105,8 @@ export default function SlideContainer() {
 
     const loadDashboardSlides = async () => {
       try {
-        const slides = await getDashboardSlides(DUMMY_SLIDES);
+        // Ambil data dari Apps Script untuk tanggal update tertentu
+        const slides = await getDashboardSlides(DUMMY_SLIDES, "2026-05-22");
 
         if (!isMounted || slides.length === 0) return;
 
