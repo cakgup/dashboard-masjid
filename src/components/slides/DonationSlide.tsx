@@ -12,7 +12,9 @@ export default function DonationSlide({ data }: { data: DonationData }) {
     }).format(amount);
   };
 
-  const progressPercentage = Math.min(Math.round((data.terkumpul / data.target) * 100), 100);
+  const progressPercentage = data.target > 0
+    ? Math.min(Math.round((data.terkumpul / data.target) * 100), 100)
+    : 0;
 
   return (
     <div className="flex flex-col items-center w-full max-w-6xl shrink-0">

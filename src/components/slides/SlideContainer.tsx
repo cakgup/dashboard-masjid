@@ -105,7 +105,6 @@ export default function SlideContainer() {
 
     const loadDashboardSlides = async () => {
       try {
-        // Ambil data dari Apps Script; biarkan Apps Script membaca tanggal dari sheet
         const slides = await getDashboardSlides(DUMMY_SLIDES);
 
         if (!isMounted || slides.length === 0) return;

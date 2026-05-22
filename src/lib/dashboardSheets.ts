@@ -176,14 +176,78 @@ function formatTanggalIndonesia(value: unknown) {
     day: "2-digit",
     month: "long",
     year: "numeric",
+    timeZone: "Asia/Jakarta",
   }).format(date);
+}
+
+function getTanggalHariIniJakarta() {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Jakarta",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(new Date());
+
+  const year = parts.find((part) => part.type === "year")?.value;
+  const month = parts.find((part) => part.type === "month")?.value;
+  const day = parts.find((part) => part.type === "day")?.value;
+
+  return year && month && day ? `${year}-${month}-${day}` : new Date().toISOString().slice(0, 10);
+}
+
+function normalizeJamIndonesia(value: string) {
+  let text = value.trim();
+  if (!text) return "";
+
+  text = text
+    .replace(/\bpukul\b/gi, "")
+    .replace(/\bWIB\b/gi, "")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  return text.replace(/(\d{1,2}):(\d{2})/g, "$1.$2");
+}
+
+function formatWaktuKajian(tanggalLabel: string, rentangWaktu: string, waktuLengkap: string) {
+  if (waktuLengkap) {
+    let text = waktuLengkap
+      .replace(/(\d{1,2}):(\d{2})/g, "$1.$2")
+      .replace(/\s+/g, " ")
+      .trim();
+
+    if (/\d{1,2}\.\d{2}/.test(text) && !/\bpukul\b/i.test(text)) {
+      text = text.replace(/(,?\s*)(\d{1,2}\.\d{2})/, "$1pukul $2");
+    }
+
+    if (/\d{1,2}\.\d{2}/.test(text) && !/\bWIB\b/i.test(text)) {
+      text = `${text} WIB`;
+    }
+
+    return text;
+  }
+
+  const jamLabel = normalizeJamIndonesia(rentangWaktu);
+
+  if (tanggalLabel && jamLabel) return `${tanggalLabel}, pukul ${jamLabel} WIB`;
+  if (tanggalLabel) return tanggalLabel;
+  if (jamLabel) return `pukul ${jamLabel} WIB`;
+
+  return "";
+}
+
+function resolveTanggalUpdate(tanggalUpdate = DEFAULT_TANGGAL_UPDATE) {
+  // Jika nilai dikirim manual/env, gunakan nilai itu. Jika kosong, otomatis gunakan
+  // tanggal hari ini berdasarkan zona waktu Jakarta agar parameter tanggal_update
+  // tetap ikut siklus pembaruan harian.
+  return tanggalUpdate || getTanggalHariIniJakarta();
 }
 
 function buildUrl(tanggalUpdate = DEFAULT_TANGGAL_UPDATE) {
   const url = new URL(DASHBOARD_API_URL);
+  const tanggalUpdateEfektif = resolveTanggalUpdate(tanggalUpdate);
 
-  if (tanggalUpdate) {
-    url.searchParams.set("tanggal_update", tanggalUpdate);
+  if (tanggalUpdateEfektif) {
+    url.searchParams.set("tanggal_update", tanggalUpdateEfektif);
   }
 
   // Mencegah data lama tertahan cache browser/TV display.
@@ -259,7 +323,7 @@ function mapKajianSlides(rows: SheetRow[], tanggalUpdate: string): KajianData[] 
     ], "");
 
     const tanggalLabel = formatTanggalIndonesia(tanggal);
-    const waktu = waktuLengkap || [tanggalLabel, rentangWaktu].filter(Boolean).join(", ");
+    const waktu = formatWaktuKajian(tanggalLabel, rentangWaktu, waktuLengkap);
 
     const judul = getString(row, [
       "judul",
@@ -390,16 +454,16 @@ function mapKasSlide(row: SheetRow | null | undefined, tanggalUpdate: string, fa
     pemasukan = fallbackKas?.pemasukan ?? 0;
   }
 
-  // Sesuai Excel/ringkasan: Saldo Akhir = Total Pemasukan - Total Pengeluaran.
-  // Contoh 2026-05-22: 34.382.925 - 14.831.589 = 19.551.336.
-  const saldoAkhir = pemasukan - pengeluaran;
+  // Dahulukan nilai Saldo Akhir dari ringkasan. Jika tidak tersedia, hitung
+  // menggunakan rumus kas dasar: Saldo Akhir = Pemasukan - Pengeluaran.
+  const saldoAkhir = Number.isFinite(saldoAkhirRaw) ? saldoAkhirRaw : pemasukan - pengeluaran;
 
   return {
     id: "kas-google-sheet",
     type: "kas",
     duration: getNumber(row, ["duration", "durasi", "durasi_ms"], fallbackKas?.duration ?? 15000),
     active: true,
-    periode: getString(row, ["periode", "tanggal_update", "tanggal", "bulan"], formatTanggalIndonesia(tanggalUpdate)),
+    periode: getString(row, ["periode", "label_periode", "tanggal_update", "tanggal", "bulan"], formatTanggalIndonesia(tanggalUpdate)),
     saldoAwal,
     pemasukan,
     pengeluaran,
@@ -434,18 +498,40 @@ function mapDonationSlide(row: SheetRow | null | undefined, tanggalUpdate: strin
     type: "donation",
     duration: getNumber(row, ["duration", "durasi", "durasi_ms"], fallbackDonation?.duration ?? 15000),
     active: true,
-    program: getString(row, ["program", "judul", "nama_program"], fallbackDonation?.program ?? "Donasi Kemanusiaan Palestina"),
-    target: getNumber(row, ["target", "target_donasi", "target_pengumpulan"], fallbackDonation?.target ?? 0),
-    terkumpul: getNumber(row, ["terkumpul", "total_terkumpul", "realisasi", "jumlah_terkumpul"], fallbackDonation?.terkumpul ?? 0),
-    periode: getString(row, ["periode", "tanggal_update", "tanggal", "bulan"], formatTanggalIndonesia(tanggalUpdate)),
+    program: getString(
+      row,
+      ["program", "program_donasi", "judul", "judul_donasi", "nama_program", "nama_program_donasi"],
+      fallbackDonation?.program ?? "Donasi Kemanusiaan Palestina"
+    ),
+    target: getNumber(row, [
+      "target",
+      "target_donasi",
+      "target donasi",
+      "target_donasi_palestina",
+      "target donasi palestina",
+      "target_pengumpulan",
+      "target pengumpulan",
+      "target_palestina",
+    ], fallbackDonation?.target ?? 0),
+    terkumpul: getNumber(row, [
+      "terkumpul",
+      "telah_terkumpul",
+      "telah terkumpul",
+      "total_terkumpul",
+      "jumlah_terkumpul",
+      "donasi_palestina_terkumpul",
+      "donasi palestina terkumpul",
+      "realisasi",
+      "realisasi_donasi",
+    ], fallbackDonation?.terkumpul ?? 0),
+    periode: getString(row, ["periode", "label_periode", "tanggal_update", "tanggal", "bulan"], formatTanggalIndonesia(tanggalUpdate)),
     keterangan: getString(
       row,
-      ["keterangan", "catatan", "deskripsi"],
+      ["keterangan", "catatan", "deskripsi", "keterangan_donasi", "catatan_donasi"],
       fallbackDonation?.keterangan ?? "Donasi akan disalurkan melalui lembaga resmi sesuai ketetapan pengurus masjid."
     ),
   };
 }
-
 
 function isFilled(value: unknown) {
   return value !== undefined && value !== null && String(value).trim() !== "";
@@ -462,8 +548,8 @@ function labelToSummaryKey(label: unknown) {
   if (key.includes("total_pemasukan") || key === "pemasukan" || key.includes("kas_masuk")) return "total_pemasukan";
   if (key.includes("total_pengeluaran") || key === "pengeluaran" || key.includes("kas_keluar")) return "total_pengeluaran";
   if (key.includes("saldo_akhir")) return "saldo_akhir";
-  if (key.includes("donasi_palestina_terkumpul")) return "donasi_palestina_terkumpul";
-  if (key.includes("target_donasi_palestina")) return "target_donasi_palestina";
+  if (key.includes("donasi_palestina_terkumpul") || key.includes("telah_terkumpul") || key.includes("total_terkumpul") || key.includes("jumlah_terkumpul")) return "donasi_palestina_terkumpul";
+  if (key.includes("target_donasi_palestina") || key.includes("target_donasi") || key.includes("target_pengumpulan")) return "target_donasi_palestina";
   if (key.includes("progress_donasi")) return "progress_donasi";
   if (key.includes("jumlah_kajian_aktif")) return "jumlah_kajian_aktif";
   if (key.includes("sumber_jadwal_shalat")) return "sumber_jadwal_shalat";
@@ -523,8 +609,27 @@ const KAS_KEYS = [
   "saldo akhir",
 ];
 
+const DONATION_KEYS = [
+  "target",
+  "target_donasi",
+  "target donasi",
+  "target_donasi_palestina",
+  "target_pengumpulan",
+  "terkumpul",
+  "telah_terkumpul",
+  "telah terkumpul",
+  "total_terkumpul",
+  "jumlah_terkumpul",
+  "donasi_palestina_terkumpul",
+  "realisasi_donasi",
+];
+
 function rowHasKasValue(row: SheetRow | null | undefined) {
   return Boolean(row && KAS_KEYS.some((key) => hasValue(row, [key])));
+}
+
+function rowHasDonationValue(row: SheetRow | null | undefined) {
+  return Boolean(row && DONATION_KEYS.some((key) => hasValue(row, [key])));
 }
 
 function firstKasRow(...values: unknown[]) {
@@ -536,14 +641,15 @@ function firstKasRow(...values: unknown[]) {
   return null;
 }
 
-function firstRow(...values: unknown[]) {
+function firstDonationRow(...values: unknown[]) {
   for (const value of values) {
     const row = toRow(value);
-    if (row) return row;
+    if (row && rowHasDonationValue(row)) return row;
   }
 
   return null;
 }
+
 
 function getNestedRows(result: DashboardApiResponse, keys: string[]) {
   for (const key of keys) {
@@ -558,10 +664,12 @@ function getNestedRows(result: DashboardApiResponse, keys: string[]) {
 }
 
 export async function getDashboardSlides(fallbackSlides: AnySlide[], tanggalUpdate = DEFAULT_TANGGAL_UPDATE) {
-  const result = await fetchDashboardApi(tanggalUpdate);
+  const tanggalUpdateEfektif = resolveTanggalUpdate(tanggalUpdate);
+  const result = await fetchDashboardApi(tanggalUpdateEfektif);
   const tanggalAktif =
     result.tanggal_update ||
-    getString(result.pengaturan, ["tanggal_update_aktif", "tanggal update aktif"], tanggalUpdate);
+    normalizeDateToIso(getString(result.pengaturan, ["tanggal_update_aktif", "tanggal update aktif"], tanggalUpdateEfektif));
+  const labelPeriode = getString(result.pengaturan, ["label_periode", "label periode"], formatTanggalIndonesia(tanggalAktif));
 
   const kajianRows = getNestedRows(result, [
     "kajian",
@@ -578,10 +686,18 @@ export async function getDashboardSlides(fallbackSlides: AnySlide[], tanggalUpda
   ]);
 
   const ringkasanKeyValueRow = keyValueRowsToObject(ringkasanRows);
+  const ringkasanGabungan: SheetRow = {
+    ...(toRow(result.ringkasan) ?? {}),
+    ...(toRow(result.data?.ringkasan) ?? {}),
+    ...(ringkasanKeyValueRow ?? {}),
+    label_periode: labelPeriode,
+    tanggal_update: tanggalAktif,
+  };
 
   // Untuk laporan kas, dahulukan sheet ringkasan agar angka di dashboard sama
   // dengan ringkasan Excel: Total Pemasukan, Total Pengeluaran, dan Saldo Akhir.
   const kasRow = firstKasRow(
+    ringkasanGabungan,
     ringkasanKeyValueRow,
     result.ringkasan,
     result.data?.ringkasan,
@@ -591,7 +707,11 @@ export async function getDashboardSlides(fallbackSlides: AnySlide[], tanggalUpda
     result.data?.kasJumat
   );
 
-  const donasiRow = firstRow(
+  const donasiRow = firstDonationRow(
+    ringkasanGabungan,
+    ringkasanKeyValueRow,
+    result.ringkasan,
+    result.data?.ringkasan,
     result.donasi_palestina,
     result.donasiPalestina,
     result.data?.donasi_palestina,
