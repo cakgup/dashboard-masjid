@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="Dashboard Masjid Al Amanah Kementerian Keuangan" />
+  <title>Dashboard Masjid Al Amanah</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+<body>
+  <div id="app" class="app">
+    <div class="background"></div>
+    <div class="ambient-gradient" aria-hidden="true"></div>
+    <div id="snowLayer" class="snow-layer" aria-hidden="true"></div>
+    <div class="decor decor-left"></div>
+    <div class="decor decor-right"></div>
+
+    <header class="header">
+      <div id="iqomahReminder" class="iqomah-reminder hidden"></div>
+
+      <section class="brand">
+        <div class="logo-wrap">
+          <img src="./logo.png" alt="Logo Masjid Al Amanah" class="logo" />
+        </div>
+        <div class="brand-text">
+          <h1>
+            <span>Masjid Al Amanah</span>
+            <small>Kementerian Keuangan Republik Indonesia</small>
+          </h1>
+          <p class="address"><span class="meta-icon location-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 21s7-5.15 7-11a7 7 0 1 0-14 0c0 5.85 7 11 7 11Z"></path><circle cx="12" cy="10" r="2.6"></circle></svg></span> Jl. Lapangan Banteng Timur No. 2-4 Jakarta Pusat Kode Pos 10710</p>
+        </div>
+      </section>
+
+      <section class="clock-panel">
+        <div class="clock-row">
+          <div id="clock" class="clock">00:00:00</div>
+          <div class="tz">WIB</div>
+        </div>
+        <div class="date-row">
+          <span class="meta-icon calendar-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="3.5" y="4.5" width="17" height="16" rx="3"></rect><path d="M8 2.8v4"></path><path d="M16 2.8v4"></path><path d="M3.5 9h17"></path><path d="M8 13h.01"></path><path d="M12 13h.01"></path><path d="M16 13h.01"></path><path d="M8 17h.01"></path><path d="M12 17h.01"></path></svg></span>
+          <span id="gregorianDate">-</span>
+          <span class="separator">|</span>
+          <span id="hijriDate" class="hijri">-</span>
+        </div>
+      </section>
+    </header>
+
+    <main id="slideStage" class="slide-stage">
+      <div id="slideCard" class="slide-card fade-in">
+        <div class="top-line"></div>
+        <div id="slideContent" class="slide-content"></div>
+      </div>
+    </main>
+
+    <footer class="footer">
+      <section id="prayerTimes" class="prayer-times"></section>
+      <section class="marquee-wrap" aria-label="Informasi berjalan">
+        <div class="marquee-track" aria-hidden="true">
+          <span class="marquee-item">Selamat datang di Masjid Al Amanah Kementerian Keuangan &nbsp; • &nbsp; Mari luruskan dan rapatkan shaf sebelum shalat dimulai &nbsp; • &nbsp; Harap menonaktifkan telepon genggam selama berada di dalam masjid &nbsp; • &nbsp; Kajian rutin setiap ba'da Dzuhur &nbsp; • &nbsp; Salurkan Infaq dan Sedekah terbaik Anda melalui rekening BSI: 7-3700-3700-5 a/n Masjid Al Amanah</span>
+          <span class="marquee-item">Selamat datang di Masjid Al Amanah Kementerian Keuangan &nbsp; • &nbsp; Mari luruskan dan rapatkan shaf sebelum shalat dimulai &nbsp; • &nbsp; Harap menonaktifkan telepon genggam selama berada di dalam masjid &nbsp; • &nbsp; Kajian rutin setiap ba'da Dzuhur &nbsp; • &nbsp; Salurkan Infaq dan Sedekah terbaik Anda melalui rekening BSI: 7-3700-3700-5 a/n Masjid Al Amanah</span>
+        </div>
+      </section>
+    </footer>
+  </div>
+
+  <script src="./script.js"></script>
+</body>
+</html>
