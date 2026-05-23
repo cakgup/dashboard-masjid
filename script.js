@@ -4,7 +4,7 @@
 
 const DASHBOARD_API_URL = "https://script.google.com/macros/s/AKfycbyq0UsoCdCsaGEcFqoxO23cyEkMoKDyhWB_aCTCn7bKDeI_G2Exnt5-rLSFoccHBgZx/exec";
 const MYQURAN_CITY_ID = "1301"; // DKI Jakarta
-const DASHBOARD_REFRESH_INTERVAL_MS = 5 * 60 * 1000;
+const DASHBOARD_REFRESH_INTERVAL_MS = 60 * 1000;
 const PRAYER_REFRESH_INTERVAL_MS = 60 * 60 * 1000;
 
 const MONTHS_ID = [
@@ -120,7 +120,14 @@ function escapeHtml(value) {
 }
 
 function normalizeKey(key) {
-  return String(key || "").toLowerCase().trim().replace(/[\s-]+/g, "_");
+  return String(key || "")
+    .replace(/([a-z0-9])([A-Z])/g, "$1_$2")
+    .toLowerCase()
+    .trim()
+    .replace(/[()]/g, "")
+    .replace(/[’']/g, "")
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "");
 }
 
 function toRow(value) {
@@ -488,6 +495,18 @@ function hasEndpointContent(result) {
     hasObjectOrRows(result?.data?.kajian) ||
     hasObjectOrRows(result?.jadwal_kajian) ||
     hasObjectOrRows(result?.data?.jadwal_kajian) ||
+    hasObjectOrRows(result?.kas_jumat) ||
+    hasObjectOrRows(result?.kasJumat) ||
+    hasObjectOrRows(result?.kasRaw) ||
+    hasObjectOrRows(result?.data?.kas_jumat) ||
+    hasObjectOrRows(result?.data?.kasJumat) ||
+    hasObjectOrRows(result?.data?.kasRaw) ||
+    hasObjectOrRows(result?.donasi_palestina) ||
+    hasObjectOrRows(result?.donasiPalestina) ||
+    hasObjectOrRows(result?.donasiRaw) ||
+    hasObjectOrRows(result?.data?.donasi_palestina) ||
+    hasObjectOrRows(result?.data?.donasiPalestina) ||
+    hasObjectOrRows(result?.data?.donasiRaw) ||
     hasObjectOrRows(result?.ringkasan) ||
     hasObjectOrRows(result?.data?.ringkasan)
   );
@@ -497,11 +516,11 @@ async function loadDashboardSlides() {
   try {
     const tanggalUpdate = getTanggalHariIniJakarta();
     const kajianKeys = ["kajian", "kajian_jumat", "kajianJumat", "jadwal_kajian", "jadwalKajian"];
-    let result = await fetchDashboardApi(tanggalUpdate, true);
-    let alreadyFetchedWithoutTanggal = false;
+    let result = await fetchDashboardApi(null, false);
+    let alreadyFetchedWithoutTanggal = true;
     if (!hasEndpointContent(result)) {
-      result = await fetchDashboardApi(null, false);
-      alreadyFetchedWithoutTanggal = true;
+      result = await fetchDashboardApi(tanggalUpdate, true);
+      alreadyFetchedWithoutTanggal = false;
     }
 
     // Jika endpoint dengan parameter tanggal_update tidak mengembalikan kajian aktif,
@@ -539,8 +558,12 @@ async function loadDashboardSlides() {
     // ringkasan tetap dipakai sebagai fallback apabila object khusus belum tersedia.
     const kasRow = firstRowByPredicate(
       rowHasKasValue,
+      result.kasRaw,
+      result.kas_raw,
       result.kas_jumat,
       result.kasJumat,
+      result.data?.kasRaw,
+      result.data?.kas_raw,
       result.data?.kas_jumat,
       result.data?.kasJumat,
       ringkasanGabungan,
@@ -551,8 +574,12 @@ async function loadDashboardSlides() {
 
     const donationRow = firstRowByPredicate(
       rowHasDonationValue,
+      result.donasiRaw,
+      result.donasi_raw,
       result.donasi_palestina,
       result.donasiPalestina,
+      result.data?.donasiRaw,
+      result.data?.donasi_raw,
       result.data?.donasi_palestina,
       result.data?.donasiPalestina,
       ringkasanGabungan,
