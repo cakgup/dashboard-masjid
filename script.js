@@ -120,7 +120,13 @@ function escapeHtml(value) {
 }
 
 function normalizeKey(key) {
-  return String(key || "").toLowerCase().trim().replace(/[\s-]+/g, "_");
+  return String(key || "")
+    .toLowerCase()
+    .trim()
+    .replace(/[()]/g, "")
+    .replace(/[’']/g, "")
+    .replace(/[^\w\s]/g, " ")
+    .replace(/\s+/g, "_");
 }
 
 function toRow(value) {
@@ -256,34 +262,35 @@ function normalizeJamIndonesia(value) {
   let text = String(value || "").trim();
   if (!text) return "";
   text = text.replace(/\bpukul\b/gi, "").replace(/\bWIB\b/gi, "").replace(/\s+/g, " ").trim();
-  return text.replace(/(\d{1,2}):(\d{2})/g, "$1.$2");
+  return text.replace(/(\d{1,2})[.:](\d{2})/g, "$1:$2");
 }
 
 function formatWaktuKajian(tanggalLabel, rentangWaktu, waktuLengkap) {
   if (waktuLengkap) {
-    let text = String(waktuLengkap).replace(/(\d{1,2}):(\d{2})/g, "$1.$2").replace(/\s+/g, " ").trim();
-    if (/\d{1,2}\.\d{2}/.test(text) && !/\bpukul\b/i.test(text)) {
-      text = text.replace(/(,?\s*)(\d{1,2}\.\d{2})/, "$1pukul $2");
+    let text = String(waktuLengkap).replace(/(\d{1,2})[.:](\d{2})/g, "$1:$2").replace(/\s+/g, " ").trim();
+    if (/\d{1,2}:\d{2}/.test(text) && !/\bPukul\b/i.test(text)) {
+      text = text.replace(/(,?\s*)(\d{1,2}:\d{2})/, " Pukul $2").replace(/\s+/g, " ").trim();
     }
-    if (/\d{1,2}\.\d{2}/.test(text) && !/\bWIB\b/i.test(text)) text = `${text} WIB`;
+    if (/\d{1,2}:\d{2}/.test(text) && !/\bWIB\b/i.test(text)) text = `${text} WIB`;
     return text;
   }
 
   const jamLabel = normalizeJamIndonesia(rentangWaktu);
-  if (tanggalLabel && jamLabel) return `${tanggalLabel}, pukul ${jamLabel} WIB`;
+  if (tanggalLabel && jamLabel) return `${tanggalLabel} Pukul ${jamLabel} WIB`;
   if (tanggalLabel) return tanggalLabel;
-  if (jamLabel) return `pukul ${jamLabel} WIB`;
+  if (jamLabel) return `Pukul ${jamLabel} WIB`;
   return "";
 }
 
 function formatRupiah(amount) {
+  const number = parseFlexibleNumber(amount, 0);
   return new Intl.NumberFormat("id-ID", {
     style: "currency",
     currency: "IDR",
     minimumFractionDigits: 0,
     maximumFractionDigits: 0,
   })
-    .format(Number(amount) || 0)
+    .format(number)
     .replace(/^Rp\s?/, "Rp ");
 }
 
@@ -357,6 +364,42 @@ function firstRowByPredicate(predicate, ...values) {
   return null;
 }
 
+function isFinancialKey(key) {
+  const normalized = normalizeKey(key);
+  return KAS_KEYS.concat(DONATION_KEYS).some((item) => normalizeKey(item) === normalized) ||
+    normalized.includes("saldo") || normalized.includes("pemasukan") || normalized.includes("pengeluaran") ||
+    normalized.includes("target") || normalized.includes("terkumpul") || normalized.includes("donasi");
+}
+
+function mergeRowsPreferNonZero(...values) {
+  const merged = {};
+
+  values.forEach((value) => {
+    const row = toRow(value);
+    if (!row) return;
+
+    Object.entries(row).forEach(([key, value]) => {
+      if (!isFilled(value)) return;
+
+      const current = merged[key];
+      if (!isFilled(current)) {
+        merged[key] = value;
+        return;
+      }
+
+      if (isFinancialKey(key)) {
+        const currentNumber = parseFlexibleNumber(current, Number.NaN);
+        const incomingNumber = parseFlexibleNumber(value, Number.NaN);
+        if ((!Number.isFinite(currentNumber) || currentNumber === 0) && Number.isFinite(incomingNumber) && incomingNumber !== 0) {
+          merged[key] = value;
+        }
+      }
+    });
+  });
+
+  return Object.keys(merged).length ? merged : null;
+}
+
 function getNestedRows(result, keys) {
   for (const key of keys) {
     const directRows = toRows(result?.[key]);
@@ -412,11 +455,11 @@ function mapKasSlide(row, tanggalUpdate) {
   const fallbackKas = fallbackByType("kas");
   if (!row) return { ...fallbackKas, periode: formatTanggalIndonesia(tanggalUpdate), saldoAwal: 0, pemasukan: 0, pengeluaran: 0, saldoAkhir: 0, keterangan: "Data kas belum tersedia." };
 
-  const saldoAwal = getNumber(row, ["saldo_awal", "saldoAwal", "saldo awal"], fallbackKas?.saldoAwal || 0);
-  const pengeluaran = getNumber(row, ["pengeluaran", "total_pengeluaran", "total pengeluaran", "jumlah_pengeluaran", "jumlah pengeluaran", "kas_keluar", "kas keluar"], fallbackKas?.pengeluaran || 0);
-  const saldoAkhirRaw = getNumber(row, ["saldo_akhir", "saldoAkhir", "saldo akhir"], Number.NaN);
+  const saldoAwal = getNumber(row, ["saldo_awal", "saldoAwal", "saldo awal", "saldo_awal_text", "saldo_awal_rp"], fallbackKas?.saldoAwal || 0);
+  const pengeluaran = getNumber(row, ["pengeluaran", "total_pengeluaran", "total pengeluaran", "total_pengeluaran_text", "jumlah_pengeluaran", "jumlah pengeluaran", "kas_keluar", "kas keluar"], fallbackKas?.pengeluaran || 0);
+  const saldoAkhirRaw = getNumber(row, ["saldo_akhir", "saldoAkhir", "saldo akhir", "saldo_akhir_text", "saldo_akhir_rp"], Number.NaN);
   const pemasukanKeys = [
-    "pemasukan", "pemasukan_jumat", "pemasukan jumat", "total_pemasukan", "total pemasukan",
+    "pemasukan", "pemasukan_jumat", "pemasukan jumat", "total_pemasukan", "total pemasukan", "total_pemasukan_text",
     "jumlah_pemasukan", "jumlah pemasukan", "penerimaan", "total_penerimaan", "total penerimaan",
     "kas_masuk", "kas masuk", "total_infaq", "total infaq", "total_infak", "total infak", "infaq", "infak", "kotak_jumat", "kotak jumat", "kotak_infaq", "kotak infaq",
   ];
@@ -535,10 +578,10 @@ async function loadDashboardSlides() {
       tanggal_update: tanggalAktif,
     };
 
-    // Utamakan object khusus dari Apps Script agar field keterangan tidak hilang.
-    // ringkasan tetap dipakai sebagai fallback apabila object khusus belum tersedia.
-    const kasRow = firstRowByPredicate(
-      rowHasKasValue,
+    // Object khusus dari Apps Script tetap dipakai untuk keterangan/catatan.
+    // Namun angka 0/kosong akan ditambal dari ringkasan agar saldo tidak tampil Rp 0
+    // ketika kolom formula spreadsheet belum selesai terbaca.
+    const kasCandidates = [
       result.kas_jumat,
       result.kasJumat,
       result.data?.kas_jumat,
@@ -546,11 +589,12 @@ async function loadDashboardSlides() {
       ringkasanGabungan,
       ringkasanKeyValueRow,
       result.ringkasan,
-      result.data?.ringkasan
-    );
+      result.data?.ringkasan,
+    ].map(toRow).filter((row) => row && rowHasKasValue(row));
 
-    const donationRow = firstRowByPredicate(
-      rowHasDonationValue,
+    const kasRow = mergeRowsPreferNonZero(...kasCandidates);
+
+    const donationCandidates = [
       result.donasi_palestina,
       result.donasiPalestina,
       result.data?.donasi_palestina,
@@ -558,8 +602,10 @@ async function loadDashboardSlides() {
       ringkasanGabungan,
       ringkasanKeyValueRow,
       result.ringkasan,
-      result.data?.ringkasan
-    );
+      result.data?.ringkasan,
+    ].map(toRow).filter((row) => row && rowHasDonationValue(row));
+
+    const donationRow = mergeRowsPreferNonZero(...donationCandidates);
 
     const reminderSlides = FALLBACK_SLIDES.filter((slide) => slide.type === "reminder");
     const slides = [
