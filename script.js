@@ -477,7 +477,7 @@ function buildDashboardUrl(tanggalUpdate, includeTanggalUpdate = true) {
 }
 
 async function fetchDashboardApi(tanggalUpdate, includeTanggalUpdate = true) {
-  const response = await fetch(buildDashboardUrl(tanggalUpdate, includeTanggalUpdate), { method: "GET", cache: "no-store" });
+  (buildDashboardUrl(tanggalUpdate, includeTanggalUpdate), { method: "GET", cache: "no-store" });
   if (!response.ok) throw new Error(`Gagal menghubungi Apps Script. Status: ${response.status}`);
   const result = await response.json();
   if (result?.success === false) throw new Error(result.message || "Apps Script mengembalikan status gagal.");
@@ -768,7 +768,7 @@ function getHijriDateText(date = new Date()) {
 async function fetchPrayerTimes() {
   try {
     const [year, month, day] = getTanggalHariIniJakarta().split("-");
-    const response = await fetch(`https://api.myquran.com/v2/sholat/jadwal/${MYQURAN_CITY_ID}/${year}/${month}/${day}`, { cache: "no-store" });
+    (`https://api.myquran.com/v2/sholat/jadwal/${MYQURAN_CITY_ID}/${year}/${month}/${day}`, { cache: "no-store" });
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const result = await response.json();
     const j = result?.data?.jadwal;
