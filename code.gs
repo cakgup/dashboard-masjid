@@ -1,4 +1,4 @@
-const SPREADSHEET_ID = '1gAI1OVx3mbDXqt_zN8QA2g8Vj6UlLxtxyiezylcR4AU';
+const SPREADSHEET_ID = 'CEK_EXCEL_ID';
 const TZ = 'Asia/Jakarta';
 
 const SHEET = {
@@ -11,20 +11,10 @@ const SHEET = {
 
 function doGet(e) {
   try {
-    const bypassCache =
-      e && e.parameter &&
-      (e.parameter.cache === '0' || e.parameter.nocache === '1' || e.parameter.refresh === '1');
-
     const parameterTanggal =
       e && e.parameter && e.parameter.tanggal_update
         ? normalizeDate_(e.parameter.tanggal_update)
         : '';
-
-    const cacheKey = 'dashboard-masjid-v20260523-' + (parameterTanggal || 'aktif');
-    if (!bypassCache) {
-      const cached = CacheService.getScriptCache().get(cacheKey);
-      if (cached) return jsonText_(cached);
-    }
 
     const pengaturan = readPengaturan_();
     const ringkasan = readRingkasan_();
@@ -39,34 +29,29 @@ function doGet(e) {
     const kasRaw = readKasJumatRaw_(tanggalUpdate);
     const donasiRaw = readDonasiRaw_(tanggalUpdate);
 
-    const pemasukanDariDetail =
-      toNumber_(kasRaw.pemasukan_jumat) + toNumber_(kasRaw.pemasukan_lain);
-
     const saldoAwal = firstNumber_([
-      kasRaw.saldo_awal,
       ringkasan.saldo_awal,
+      kasRaw.saldo_awal,
     ]);
 
     const totalPemasukan = firstNumber_([
-      kasRaw.total_pemasukan,
-      pemasukanDariDetail,
-      kasRaw.pemasukan,
       ringkasan.total_pemasukan,
+      kasRaw.total_pemasukan,
+      toNumber_(kasRaw.pemasukan_jumat) + toNumber_(kasRaw.pemasukan_lain),
+      kasRaw.pemasukan,
     ]);
 
     const totalPengeluaran = firstNumber_([
+      ringkasan.total_pengeluaran,
       kasRaw.total_pengeluaran,
       kasRaw.pengeluaran,
-      ringkasan.total_pengeluaran,
     ]);
 
-    // Saldo akhir dihitung cepat di Apps Script agar tidak menunggu/bergantung
-    // pada formula spreadsheet. Rumusnya: saldo awal + pemasukan - pengeluaran.
-    const saldoAkhirHitung = saldoAwal + totalPemasukan - totalPengeluaran;
+    // Saldo akhir mengikuti nilai pada sheet ringkasan apabila tersedia.
+    // Jika kosong, dihitung dari total pemasukan dikurangi total pengeluaran.
     const saldoAkhir = firstNumber_([
-      saldoAkhirHitung,
-      kasRaw.saldo_akhir,
       ringkasan.saldo_akhir,
+      totalPemasukan - totalPengeluaran,
     ]);
 
     const donasiTerkumpul = firstNumber_([
@@ -134,10 +119,6 @@ function doGet(e) {
       total_pemasukan: totalPemasukan,
       total_pengeluaran: totalPengeluaran,
       saldo_akhir: saldoAkhir,
-      saldo_awal_text: formatRupiah_(saldoAwal),
-      total_pemasukan_text: formatRupiah_(totalPemasukan),
-      total_pengeluaran_text: formatRupiah_(totalPengeluaran),
-      saldo_akhir_text: formatRupiah_(saldoAkhir),
 
       donasi_palestina_terkumpul: donasiTerkumpul,
       target_donasi_palestina: targetDonasi,
@@ -156,17 +137,13 @@ function doGet(e) {
       label_periode: ringkasanOutput.label_periode,
 
       saldo_awal: saldoAwal,
-      saldo_awal_text: formatRupiah_(saldoAwal),
 
       // Field utama untuk dashboard.
       pemasukan: totalPemasukan,
       total_pemasukan: totalPemasukan,
-      total_pemasukan_text: formatRupiah_(totalPemasukan),
       pengeluaran: totalPengeluaran,
       total_pengeluaran: totalPengeluaran,
-      total_pengeluaran_text: formatRupiah_(totalPengeluaran),
       saldo_akhir: saldoAkhir,
-      saldo_akhir_text: formatRupiah_(saldoAkhir),
 
       // Field detail dari sheet kas_jumat, jika dibutuhkan.
       pemasukan_jumat: toNumber_(kasRaw.pemasukan_jumat),
@@ -199,7 +176,7 @@ function doGet(e) {
       catatan: donasiRaw.catatan || '',
     };
 
-    const responseData = {
+    return json_({
       success: true,
       source: 'Google Sheets',
       tanggal_update: tanggalUpdate,
@@ -217,13 +194,7 @@ function doGet(e) {
       kas_jumat: kasJumatOutput,
       donasi_palestina: donasiPalestinaOutput,
       ringkasan: ringkasanOutput,
-    };
-
-    if (!bypassCache) {
-      CacheService.getScriptCache().put(cacheKey, JSON.stringify(responseData), 45);
-    }
-
-    return json_(responseData);
+    });
   } catch (err) {
     return json_({
       success: false,
@@ -244,14 +215,14 @@ function readPengaturan_() {
   const sheet = getSheet_(SHEET.PENGATURAN);
   if (!sheet) return {};
 
-  const data = readSheetData_(sheet);
+  const values = sheet.getDataRange().getDisplayValues();
   const result = {};
 
-  data.rows.forEach(row => {
+  values.forEach(row => {
     const key = normalizeKey_(row[0]);
     if (!key) return;
 
-    result[key] = normalizeValueByKey_(key, row[1], row.display[1]);
+    result[key] = normalizeValueByKey_(key, row[1]);
   });
 
   return result;
@@ -273,18 +244,20 @@ function readRingkasan_() {
     throw new Error('Sheet "ringkasan" tidak ditemukan.');
   }
 
-  const data = readSheetData_(sheet);
+  const values = sheet.getDataRange().getDisplayValues();
   const result = {};
 
-  data.rows.forEach(row => {
-    const label = String(row.display[0] || row[0] || '').trim();
+  values.forEach(row => {
+    const label = String(row[0] || '').trim();
     if (!label) return;
 
     const key = mapRingkasanLabelToKey_(label);
     if (!key) return;
 
-    const cell = firstNonEmptyCellWithDisplay_(row.slice(1), row.display.slice(1));
-    result[key] = normalizeValueByKey_(key, cell.raw, cell.display);
+    // Ambil nilai pertama yang tidak kosong dari kolom B ke kanan.
+    // Ini aman untuk layout sheet yang nilai-nilainya berada di kolom B.
+    const rawValue = firstNonEmptyCell_(row.slice(1));
+    result[key] = normalizeValueByKey_(key, rawValue);
   });
 
   return result;
@@ -292,22 +265,24 @@ function readRingkasan_() {
 
 function readKasJumatRaw_(tanggalUpdate) {
   const rows = readTable_(SHEET.KAS_JUMAT);
-  const activeRows = rows.filter(row => String(row.status || '').toLowerCase().trim() === 'aktif');
 
-  return activeRows.find(row => {
+  return rows.find(row => {
+    const status = String(row.status || '').toLowerCase().trim();
     const tanggal = normalizeDate_(row.tanggal_update || row.tanggal || row.tgl_update || '');
-    return tanggal === tanggalUpdate;
-  }) || activeRows[0] || {};
+
+    return status === 'aktif' && tanggal === tanggalUpdate;
+  }) || {};
 }
 
 function readDonasiRaw_(tanggalUpdate) {
   const rows = readTable_(SHEET.DONASI_PALESTINA);
-  const activeRows = rows.filter(row => String(row.status || '').toLowerCase().trim() === 'aktif');
 
-  return activeRows.find(row => {
+  return rows.find(row => {
+    const status = String(row.status || '').toLowerCase().trim();
     const tanggal = normalizeDate_(row.tanggal_update || row.tanggal || row.tgl_update || '');
-    return tanggal === tanggalUpdate;
-  }) || activeRows[0] || {};
+
+    return status === 'aktif' && tanggal === tanggalUpdate;
+  }) || {};
 }
 
 function readKajianAktif_(tanggalUpdate) {
@@ -327,26 +302,20 @@ function readTable_(sheetName) {
   const sheet = getSheet_(sheetName);
   if (!sheet) return [];
 
-  const data = readSheetData_(sheet);
-  if (data.values.length < 2) return [];
+  const values = sheet.getDataRange().getDisplayValues();
+  if (values.length < 2) return [];
 
-  const headers = data.rows[0].display.map(h => normalizeKey_(h));
+  const headers = values[0].map(h => normalizeKey_(h));
 
-  return data.rows
+  return values
     .slice(1)
-    .filter(row => row.some((cell, index) => !isEmpty_(cell) || !isEmpty_(row.display[index])))
+    .filter(row => row.some(cell => cell !== '' && cell !== null))
     .map(row => {
       const item = {};
 
       headers.forEach((header, index) => {
         if (!header) return;
-        const value = normalizeValueByKey_(header, row[index], row.display[index]);
-
-        // Jika ada header duplikat, jangan menimpa nilai pertama yang sudah terisi.
-        // Ini mencegah kolom bantu/formula tersembunyi menghapus angka utama.
-        if (item[header] === undefined || isEmpty_(item[header])) {
-          item[header] = value;
-        }
+        item[header] = normalizeValueByKey_(header, row[index]);
       });
 
       return item;
@@ -393,40 +362,14 @@ function normalizeKajianRow_(row) {
    HELPERS
 ========================= */
 
-function getSpreadsheet_() {
-  if (!this.__DASHBOARD_MASJID_SS__) {
-    this.__DASHBOARD_MASJID_SS__ = SpreadsheetApp.openById(SPREADSHEET_ID);
-  }
-  return this.__DASHBOARD_MASJID_SS__;
-}
-
 function getSheet_(sheetName) {
-  return getSpreadsheet_().getSheetByName(sheetName);
-}
-
-function readSheetData_(sheet) {
-  const lastRow = Math.max(sheet.getLastRow(), 1);
-  const lastCol = Math.max(sheet.getLastColumn(), 1);
-  const range = sheet.getRange(1, 1, lastRow, lastCol);
-  const values = range.getValues();
-  const displayValues = range.getDisplayValues();
-
-  const rows = values.map((row, rowIndex) => {
-    const item = row.slice();
-    item.display = displayValues[rowIndex] || [];
-    return item;
-  });
-
-  return { values: values, displayValues: displayValues, rows: rows };
+  const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+  return ss.getSheetByName(sheetName);
 }
 
 function json_(data) {
-  return jsonText_(JSON.stringify(data, null, 2));
-}
-
-function jsonText_(jsonText) {
   return ContentService
-    .createTextOutput(jsonText)
+    .createTextOutput(JSON.stringify(data, null, 2))
     .setMimeType(ContentService.MimeType.JSON);
 }
 
@@ -474,10 +417,8 @@ function normalizeKey_(value) {
     .replace(/\s+/g, '_');
 }
 
-function normalizeValueByKey_(key, value, displayValue) {
+function normalizeValueByKey_(key, value) {
   const cleanKey = normalizeKey_(key);
-  const hasRawValue = !isEmpty_(value);
-  const rawOrDisplay = hasRawValue ? value : displayValue;
 
   if ([
     'tanggal_update_aktif',
@@ -489,7 +430,7 @@ function normalizeValueByKey_(key, value, displayValue) {
     'tanggal_pelaksanaan',
     'tgl_kajian',
   ].includes(cleanKey)) {
-    return normalizeDate_(rawOrDisplay);
+    return normalizeDate_(value);
   }
 
   if ([
@@ -516,10 +457,10 @@ function normalizeValueByKey_(key, value, displayValue) {
     'persentase',
     'durasi_slide_detik',
   ].includes(cleanKey)) {
-    return toNumber_(rawOrDisplay);
+    return toNumber_(value);
   }
 
-  return String(!isEmpty_(displayValue) ? displayValue : (value || '')).trim();
+  return String(value || '').trim();
 }
 
 function normalizeDate_(value) {
@@ -527,12 +468,6 @@ function normalizeDate_(value) {
 
   if (Object.prototype.toString.call(value) === '[object Date]' && !isNaN(value)) {
     return Utilities.formatDate(value, TZ, 'yyyy-MM-dd');
-  }
-
-  if (typeof value === 'number' && Number.isFinite(value) && value > 20000 && value < 80000) {
-    const excelEpoch = new Date(Date.UTC(1899, 11, 30));
-    const date = new Date(excelEpoch.getTime() + Math.round(value) * 24 * 60 * 60 * 1000);
-    return Utilities.formatDate(date, TZ, 'yyyy-MM-dd');
   }
 
   const text = String(value).trim();
@@ -544,23 +479,13 @@ function normalizeDate_(value) {
     return `${isoMatch[1]}-${isoMatch[2]}-${isoMatch[3]}`;
   }
 
-  // Format dd/mm/yyyy, dd-mm-yyyy, atau m/d/yyyy dari locale spreadsheet.
+  // Format dd/mm/yyyy atau dd-mm-yyyy.
   const dmyMatch = text.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/);
   if (dmyMatch) {
-    let first = Number(dmyMatch[1]);
-    let second = Number(dmyMatch[2]);
+    const day = dmyMatch[1].padStart(2, '0');
+    const month = dmyMatch[2].padStart(2, '0');
     const year = dmyMatch[3];
-
-    // Jika bagian kedua > 12, pola yang terbaca kemungkinan m/d/yyyy.
-    // Contoh: 5/22/2026 => 2026-05-22.
-    let day = first;
-    let month = second;
-    if (second > 12 && first <= 12) {
-      day = second;
-      month = first;
-    }
-
-    return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+    return `${year}-${month}-${day}`;
   }
 
   // Format Indonesia, contoh: Jumat, 22 Mei 2026 atau 22 Mei 2026.
@@ -747,22 +672,12 @@ function firstNumber_(values) {
 
 function firstNonEmptyCell_(cells) {
   for (const cell of cells) {
-    if (!isEmpty_(cell)) return cell;
-  }
-
-  return '';
-}
-
-function firstNonEmptyCellWithDisplay_(rawCells, displayCells) {
-  for (let i = 0; i < rawCells.length; i++) {
-    const raw = rawCells[i];
-    const display = displayCells[i];
-    if (!isEmpty_(raw) || !isEmpty_(display)) {
-      return { raw: raw, display: display };
+    if (cell !== null && cell !== undefined && String(cell).trim() !== '') {
+      return cell;
     }
   }
 
-  return { raw: '', display: '' };
+  return '';
 }
 
 function pick_(object, keys) {
@@ -785,11 +700,6 @@ function roundNumber_(value, decimals) {
   return Math.round(number * factor) / factor;
 }
 
-function formatRupiah_(value) {
-  const number = toNumber_(value);
-  return 'Rp ' + number.toLocaleString('id-ID', { maximumFractionDigits: 0 });
-}
-
 /**
  * Fungsi tes dari editor Apps Script.
  */
@@ -797,7 +707,6 @@ function testDoGet() {
   const result = doGet({
     parameter: {
       tanggal_update: '2026-05-22',
-      cache: '0',
     },
   });
 
