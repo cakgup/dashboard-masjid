@@ -139,13 +139,13 @@ http://localhost:8000
 Dashboard mengambil data utama dari Google Apps Script berikut:
 
 ```text
-https://script.google.com/macros/s/AKfycbyq0UsoCdCsaGEcFqoxO23cyEkMoKDyhWB_aCTCn7bKDeI_G2Exnt5-rLSFoccHBgZx/exec
+https://script.google.com/macros/s/SCRIPT_ID/exec
 ```
 
 Di dalam `script.js`, endpoint tersebut berada pada variabel:
 
 ```javascript
-const DASHBOARD_API_URL = "https://script.google.com/macros/s/AKfycbyq0UsoCdCsaGEcFqoxO23cyEkMoKDyhWB_aCTCn7bKDeI_G2Exnt5-rLSFoccHBgZx/exec";
+const DASHBOARD_API_URL = "https://script.google.com/macros/s/SCRIPT_ID/exec";
 ```
 
 Aplikasi akan otomatis menambahkan parameter `tanggal_update` berdasarkan tanggal hari ini zona waktu Jakarta. Contoh:
