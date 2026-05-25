@@ -33,7 +33,7 @@ const FALLBACK_SLIDES = [
     pemasukan: 0,
     pengeluaran: 0,
     saldoAkhir: 0,
-    keterangan: "Data kas belum tersedia.",
+    keterangan: "Penggunaan dana untuk operasional masjid, kebersihan, dan kegiatan lainnya.",
   },
   {
     id: "donation-fallback",
@@ -44,7 +44,7 @@ const FALLBACK_SLIDES = [
     target: 0,
     terkumpul: 0,
     periode: "-",
-    keterangan: "Data donasi belum tersedia.",
+    keterangan: "Donasi transfer melalui: Rekening BSI 7015518248 a.n. Yayasan Rumah Zakat Indonesia",
   },
   {
     id: "reminder-hp",
